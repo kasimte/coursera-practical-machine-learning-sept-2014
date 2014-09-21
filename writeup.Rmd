@@ -1,22 +1,80 @@
 ---
 title: "Practical Machine Learning Project"
-author: "Kasim Te"
-date: "2014년 9월 17일"
+author: "by Kasim Te"
+date: "September 2014"
 output: html_document
 ---
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+## Synopsis
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+This project demonstrates building a machine learning algorithm. It uses a Human Activity Recognition (HAR) dataset and tries to answer the question, "Can we predict the classe quality of an exercise performed based on quantitative accelerometer data?"
+
+## Data Processing
+
+The training data for this project are available [here](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv). The test data are available [here](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv). More information is available from the website [here](http://groupware.les.inf.puc-rio.br/har) (see the section on the Weight Lifting Exercise Dataset).
+
+## Building a Model
+
+To build our model, first we'll read in our data and slice it up into a training and validation set.
 
 ```{r}
-summary(cars)
+data <- read.csv("pml-training.csv")
+
+library(caret);
+# Split the training set into training and validation.
+inTrain <- createDataPartition(y=data$classe,p=0.8,list=FALSE)
+training <- data[inTrain,]
+validation <- data[-inTrain,]
 ```
 
-You can also embed plots, for example:
+Then we'll go about tidying the dataset up so it will be easier to find good predictors.
 
-```{r, echo=FALSE}
-plot(cars)
+```{r}
+# Remove columns with NA values.
+tidy <- training[,colSums(is.na(training)) == 0]
+# Remove index and timestamp columns.
+tidy <- subset(tidy, select=-c(X,user_name,raw_timestamp_part_1,raw_timestamp_part_2,cvtd_timestamp,num_window))
+# Remove near zero variance columns.
+nsv <- nearZeroVar(tidy,saveMetrics=TRUE)
+tidy <- tidy[,nsv$nzv == FALSE]
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+Then we can pick an algorithm create a model. The random forest algorithm is demonstrated below.
+
+```{r}
+library(randomForest)
+set.seed(17)
+modelRF <- randomForest(classe ~.,data=tidy,ntree=50)
+```
+
+## Cross Validation
+
+To cross validate, let's see how well the model fits with our validation dataset. First, we'll tidy up the validation set similar to how we did the training set.
+
+```{r}
+# Remove columns with NA values.
+validation <- validation[,colSums(is.na(training)) == 0]
+# Remove index and timestamp columns.
+validation <- subset(validation, select=-c(1:6))
+# Remove near zero variance columns from the training set.
+validation <- validation[,nsv$nzv == FALSE]
+```
+
+Then, we can predict to see our accuracy.
+
+```{r}
+validationPredict <- predict(modelRF,newdata=validation)
+confusionMatrix(validation$classe,validationPredict)
+```
+
+The accuracy on our validation is 99%, which looks quite good. 
+
+## Expected Out of Sample Error
+
+Since our accuracy was over 99% when cross validating, our expected out of sample error rate is very low, or less than 1%.
+
+## Citations
+
+Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6. 
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
